@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call Break Master - Multiplayer Card Game</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=Cinzel:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #0d131a;
+            color: #f3f4f6;
+            user-select: none;
+            overflow-x: hidden;
+        }
+        .cinzel {
+            font-family: 'Cinzel', serif;
+        }
+        
+        /* Custom Poker Table Felt Texture */
+        .felt-table {
+            background: radial-gradient(circle, #1a5e38 0%, #0d3820 70%, #061c10 100%);
+            box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.8), 0 20px 50px rgba(0, 0, 0, 0.9);
+            border: 12px solid #3d2314;
+        }
+
+        /* Card Styles */
+        .card {
+            width: 72px;
+            height: 104px;
+            border-radius: 8px;
+            background: #ffffff;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 4px 6px;
+            font-weight: bold;
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, top 0.25s ease;
+            backface-visibility: hidden;
+        }
+        @media (min-width: 640px) {
+            .card {
+                width: 86px;
+                height: 124px;
+                padding: 6px 8px;
+            }
+        }
+        .card:hover {
+            transform: translateY(-12px) scale(1.05);
+            box-shadow: 0 12px 20px rgba(0,0,0,0.5);
+            z-index: 30 !important;
+        }
+        .card.disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            filter: grayscale(40%);
+        }
+        .card.disabled:hover {
+            transform: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
+        .card.red {
+            color: #dc2626;
+        }
+        .card.black {
+            color: #1e293b;
+        }
+        
+        /* Card back styling */
+        .card-back {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #1e3a8a 100%);
+            border: 2px solid #ffffff;
+            position: relative;
+            overflow: hidden;
+        }
+        .card-back::before {
+            content: '';
+            position: absolute;
+            inset: 4px;
+            border: 1px dashed rgba(255,255,255,0.5);
+            border-radius: 4px;
+        }
+
+        /* Animations */
+        @keyframes dealCard {
+            0% { transform: translate(-50%, -50%) scale(0.2); opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .anim-deal {
+            animation: dealCard 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        @keyframes playToCenter {
+            from { transform: scale(1.1); }
+            to { transform: scale(1); }
+        }
+        .anim-play {
+            animation: playToCenter 0.3s ease-out forwards;
+        }
+
+        /* Glowing turn indicator */
+        .active-player-glow {
+            box-shadow: 0 0 20px 4px #eab308, 0 0 10px #eab308 inset;
+            border-color: #fde047 !important;
+        }
+
+        /* Glassmorphism panel */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Scrollbar custom styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.2);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between antialiased">
+
+    <!-- Top Navigation Header -->
+    <header class="bg-slate-900/90 border-b border-slate-800 px-4 py-3 sticky top-0 z-50 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center text-slate-950 font-black text-xl shadow-lg">
+                    ♠
+                </div>
+                <div>
+                    <h1 class="text-xl font-extrabold tracking-wide text-white cinzel">CALL BREAK <span class="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 font-sans border border-amber-500/30">PRO</span></h1>
+                    <p class="text-xs text-slate-400 hidden sm:block">Classic 4-Player Bidding Card Game</p>
+                </div>
+            </div>
+
+            <!-- Quick Game Info / Stats -->
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <div class="hidden md:flex items-center space-x-2 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 text-xs">
+                    <i class="fa-solid fa-trophy text-amber-400"></i>
+                    <span class="text-slate-300">Round: <strong id="header-round" class="text-white">1/5</strong></span>
+                </div>
+                <button id="btn-scoreboard" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-chart-simple text-blue-400"></i>
+                    <span>Scores</span>
+                </button>
+                <button id="btn-rules" class="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-circle-info text-amber-400"></i>
+                    <span class="hidden sm:inline">Rules</span>
+                </button>
+                <button id="btn-lobby" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-md">
+                    <i class="fa-solid fa-users mr-1"></i> Lobby
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <main class="flex-grow flex items-center justify-center p-2 sm:p-4 md:p-6 relative">
+        
+        <!-- ================= LOBBY & MULTIPLAYER MODAL ================= -->
+        <div id="lobby-screen" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-40 flex items-center justify-center p-4">
+            <div class="glass-panel w-full max-w-2xl rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-700/60 text-center relative overflow-hidden">
+                <div class="absolute -right-16 -top-16 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                <div class="absolute -left-16 -bottom-16 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                <div class="w-16 h-16 bg-gradient-to-tr from-amber-500 to-yellow-400 rounded-2xl flex items-center justify-center text-slate-950 text-3xl font-black mx-auto mb-4 shadow-xl">
+                    ♠
+                </div>
+                <h2 class="text-3xl font-black text-white cinzel mb-1">Call Break Multiplayer</h2>
+                <p class="text-slate-400 text-sm mb-6">Play online with friends or compete against smart AI bots</p>
+
+                <!-- User Name Input -->
+                <div class="max-w-md mx-auto mb-6 text-left">
+                    <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Player Name</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user absolute left-3.5 top-3 text-slate-400"></i>
+                        <input type="text" id="player-name-input" value="Player 1" class="w-full bg-slate-900/90 border border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-white font-medium focus:outline-none focus:border-amber-500 transition">
+                    </div>
+                </div>
+
+                <!-- Play Modes -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md mx-auto mb-8">
+                    <!-- Quick Match Vs Bots -->
+                    <button id="btn-quick-play" class="flex flex-col items-center p-5 bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700 hover:border-amber-500/50 rounded-2xl transition hover:-translate-y-1 group">
+                        <div class="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-xl mb-3 group-hover:scale-110 transition">
+                            <i class="fa-solid fa-robot"></i>
+                        </div>
+                        <span class="font-bold text-white text-base">Play vs Bots</span>
+                        <span class="text-xs text-slate-400 mt-1">Single player / Quick practice</span>
+                    </button>
+
+                    <!-- Online Multiplayer Room -->
+                    <button id="btn-multiplayer-mode" class="flex flex-col items-center p-5 bg-gradient-to-b from-slate-800 to-slate-900 border border-slate-700 hover:border-emerald-500/50 rounded-2xl transition hover:-translate-y-1 group">
+                        <div class="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xl mb-3 group-hover:scale-110 transition">
+                            <i class="fa-solid fa-globe"></i>
+                        </div>
+                        <span class="font-bold text-white text-base">Multiplayer Table</span>
+                        <span class="text-xs text-slate-400 mt-1">Create or join game room</span>
+                    </button>
+                </div>
+
+                <!-- Game Room Options (Hidden by default) -->
+                <div id="room-selection-panel" class="hidden max-w-md mx-auto text-left bg-slate-900/80 p-4 rounded-xl border border-slate-800 mb-6">
+                    <h3 class="text-sm font-bold text-amber-400 mb-3 flex items-center gap-2">
+                        <i class="fa-solid fa-door-open"></i> Join Room
+                    </h3>
+                    <div class="flex gap-2 mb-3">
+                        <input type="text" id="room-code-input" placeholder="Enter Room Code (e.g. CB-8921)" class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+                        <button id="btn-join-room" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold transition">Join</button>
+                    </div>
+                    <div class="relative flex py-2 items-center">
+                        <div class="flex-grow border-t border-slate-800"></div>
+                        <span class="flex-shrink mx-3 text-xs text-slate-500 uppercase">Or</span>
+                        <div class="flex-grow border-t border-slate-800"></div>
+                    </div>
+                    <button id="btn-create-room" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 py-2.5 rounded-lg text-sm font-bold transition shadow-md">
+                        <i class="fa-solid fa-plus-circle mr-1"></i> Create New Private Room
+                    </button>
+                </div>
+
+                <p class="text-xs text-slate-500">Call Break is played with a standard 52-card deck among 4 players. Spades are always trumps!</p>
+            </div>
+        </div>
+
+        <!-- THE CARD TABLE -->
+        <div id="game-table" class="felt-table w-full max-w-5xl aspect-[4/3] sm:aspect-[16/10] rounded-[40px] relative flex flex-col justify-between p-3 sm:p-6 overflow-hidden">
+            
+            <!-- Table Background Trump Accent -->
+            <div class="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
+                <span class="text-[180px] sm:text-[260px] text-white select-none">♠</span>
+            </div>
+
+            <!-- PLAYER TOP (North - AI 2) -->
+            <div class="flex flex-col items-center justify-start z-10">
+                <div id="p2-box" class="flex items-center space-x-3 bg-slate-950/80 border border-slate-700/80 px-4 py-1.5 rounded-full transition-all duration-300">
+                    <div class="w-9 h-9 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300 font-bold text-sm relative">
+                        <i class="fa-solid fa-robot"></i>
+                        <span id="p2-dealer" class="hidden absolute -top-1 -right-1 bg-amber-500 text-slate-950 w-4 h-4 rounded-full text-[10px] font-black flex items-center justify-center">D</span>
+                    </div>
+                    <div class="text-left">
+                        <div id="p2-name" class="text-xs font-bold text-white leading-tight">Alex (Bot)</div>
+                        <div class="text-[11px] text-slate-400 flex items-center space-x-2">
+                            <span>Bid: <strong id="p2-bid" class="text-amber-400">-</strong></span>
+                            <span>Won: <strong id="p2-won" class="text-emerald-400">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Card backs for player 2 -->
+                <div id="p2-cards-container" class="flex -space-x-10 mt-1 h-12 items-center opacity-80 scale-75 sm:scale-90"></div>
+            </div>
+
+            <!-- MIDDLE SECTION (West Player 4, Center Felt Play Area, East Player 2) -->
+            <div class="flex-1 flex items-center justify-between px-1 sm:px-4 my-2 z-10">
+                
+                <!-- PLAYER LEFT (West - AI 4) -->
+                <div class="flex flex-col items-center">
+                    <div id="p4-box" class="flex flex-col items-center bg-slate-950/80 border border-slate-700/80 p-2.5 rounded-2xl transition-all duration-300 text-center w-24 sm:w-28">
+                        <div class="w-9 h-9 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300 font-bold text-sm mb-1 relative">
+                            <i class="fa-solid fa-robot"></i>
+                            <span id="p4-dealer" class="hidden absolute -top-1 -right-1 bg-amber-500 text-slate-950 w-4 h-4 rounded-full text-[10px] font-black flex items-center justify-center">D</span>
+                        </div>
+                        <div id="p4-name" class="text-xs font-bold text-white truncate w-full">Sam (Bot)</div>
+                        <div class="text-[10px] text-slate-400 mt-0.5">
+                            Bid: <strong id="p4-bid" class="text-amber-400">-</strong> | Won: <strong id="p4-won" class="text-emerald-400">0</strong>
+                        </div>
+                    </div>
+                    <div id="p4-cards-container" class="hidden sm:flex flex-col -space-y-16 mt-2 opacity-80 scale-75"></div>
+                </div>
+
+                <!-- CENTER PLAYING AREA (Tricks played) -->
+                <div class="flex-1 max-w-xs sm:max-w-md h-full flex flex-col items-center justify-center relative">
+                    
+                    <!-- Round Status / Message Overlay -->
+                    <div id="game-status-msg" class="absolute top-2 bg-slate-950/80 text-amber-300 border border-amber-500/30 text-xs px-3 py-1 rounded-full font-semibold shadow-lg backdrop-blur-sm z-30 transition-all">
+                        Waiting to deal...
+                    </div>
+
+                    <!-- Played Cards Slots in Trick Area -->
+                    <div class="w-48 h-48 sm:w-64 sm:h-64 relative flex items-center justify-center">
+                        <!-- North Played Card Slot -->
+                        <div id="slot-p2" class="absolute top-1 transform -translate-x-1/2 left-1/2 transition-all duration-300"></div>
+                        <!-- West Played Card Slot -->
+                        <div id="slot-p4" class="absolute left-1 transform -translate-y-1/2 top-1/2 transition-all duration-300"></div>
+                        <!-- East Played Card Slot -->
+                        <div id="slot-p3" class="absolute right-1 transform -translate-y-1/2 top-1/2 transition-all duration-300"></div>
+                        <!-- South Played Card Slot -->
+                        <div id="slot-p1" class="absolute bottom-1 transform -translate-x-1/2 left-1/2 transition-all duration-300"></div>
+                        
+                        <!-- Lead Suit Indicator Badge -->
+                        <div id="lead-suit-badge" class="hidden absolute bg-slate-900/90 border border-slate-700 text-white text-[10px] uppercase font-bold px-2 py-0.5 rounded-full shadow">
+                            Lead: <span id="lead-suit-icon" class="text-sm">♠</span>
+                        </div>
+                    </div>
+
+                    <!-- BIDDING SELECTOR DIALOG -->
+                    <div id="bidding-modal" class="hidden absolute inset-0 bg-slate-950/90 rounded-2xl border border-amber-500/40 p-4 flex flex-col items-center justify-center z-30 backdrop-blur-md">
+                        <h3 class="text-lg font-extrabold text-amber-400 mb-1">Make Your Call (Bid)</h3>
+                        <p class="text-xs text-slate-300 mb-4 text-center">Predict how many tricks you will win this round (1 to 13)</p>
+                        <div class="grid grid-cols-4 sm:grid-cols-7 gap-2 max-w-sm mb-4">
+                            <!-- Bidding buttons 1 - 13 generated dynamically -->
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="1">1</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="2">2</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="3">3</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="4">4</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="5">5</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="6">6</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="7">7</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="8">8</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="9">9</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="10">10</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="11">11</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="12">12</button>
+                            <button class="btn-bid bg-slate-800 hover:bg-amber-500 hover:text-slate-950 font-bold py-2 rounded-lg border border-slate-700 text-sm transition" data-bid="13">13</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PLAYER RIGHT (East - AI 3) -->
+                <div class="flex flex-col items-center">
+                    <div id="p3-box" class="flex flex-col items-center bg-slate-950/80 border border-slate-700/80 p-2.5 rounded-2xl transition-all duration-300 text-center w-24 sm:w-28">
+                        <div class="w-9 h-9 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center text-slate-300 font-bold text-sm mb-1 relative">
+                            <i class="fa-solid fa-robot"></i>
+                            <span id="p3-dealer" class="hidden absolute -top-1 -right-1 bg-amber-500 text-slate-950 w-4 h-4 rounded-full text-[10px] font-black flex items-center justify-center">D</span>
+                        </div>
+                        <div id="p3-name" class="text-xs font-bold text-white truncate w-full">Maya (Bot)</div>
+                        <div class="text-[10px] text-slate-400 mt-0.5">
+                            Bid: <strong id="p3-bid" class="text-amber-400">-</strong> | Won: <strong id="p3-won" class="text-emerald-400">0</strong>
+                        </div>
+                    </div>
+                    <div id="p3-cards-container" class="hidden sm:flex flex-col -space-y-16 mt-2 opacity-80 scale-75"></div>
+                </div>
+            </div>
+
+            <!-- PLAYER BOTTOM (South - Human Player 1) -->
+            <div class="flex flex-col items-center justify-end z-20">
+                <!-- Human Stats Box -->
+                <div id="p1-box" class="flex items-center space-x-4 bg-slate-950/90 border border-slate-700/80 px-5 py-2 rounded-full mb-2 shadow-lg transition-all duration-300">
+                    <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 text-slate-950 flex items-center justify-center font-bold text-base shadow relative">
+                        <i class="fa-solid fa-user"></i>
+                        <span id="p1-dealer" class="hidden absolute -top-1 -right-1 bg-amber-500 text-slate-950 w-4 h-4 rounded-full text-[10px] font-black flex items-center justify-center border border-slate-900">D</span>
+                    </div>
+                    <div class="text-left">
+                        <div id="p1-name" class="text-sm font-bold text-white leading-tight">You</div>
+                        <div class="text-xs text-slate-300 flex items-center space-x-3">
+                            <span>Bid: <strong id="p1-bid" class="text-amber-400">-</strong></span>
+                            <span>Tricks Won: <strong id="p1-won" class="text-emerald-400">0</strong></span>
+                        </div>
+                    </div>
+                    <div class="border-l border-slate-700 pl-3">
+                        <span class="text-[10px] text-slate-400 block uppercase font-bold">Total Score</span>
+                        <span id="p1-score" class="text-amber-400 font-extrabold text-sm">0.0</span>
+                    </div>
+                </div>
+
+                <!-- Human Hand Cards Container -->
+                <div id="p1-cards-container" class="flex -space-x-6 sm:-space-x-8 md:-space-x-9 hover:-space-x-4 transition-all duration-300 justify-center min-h-[110px] sm:min-h-[130px] p-2 max-w-full overflow-x-auto">
+                    <!-- Cards are rendered dynamically here -->
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- SCOREBOARD MODAL -->
+    <div id="scoreboard-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-xl rounded-2xl p-6 shadow-2xl border border-slate-700 text-center relative">
+            <button id="close-scoreboard" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h3 class="text-2xl font-bold text-white cinzel mb-1">Scoreboard</h3>
+            <p class="text-xs text-slate-400 mb-6">Round cumulative points tracker</p>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left text-slate-300">
+                    <thead class="text-xs text-amber-400 uppercase bg-slate-900/80 border-b border-slate-800">
+                        <tr>
+                            <th class="px-4 py-3">Player</th>
+                            <th class="px-3 py-3 text-center">R1</th>
+                            <th class="px-3 py-3 text-center">R2</th>
+                            <th class="px-3 py-3 text-center">R3</th>
+                            <th class="px-3 py-3 text-center">R4</th>
+                            <th class="px-3 py-3 text-center">R5</th>
+                            <th class="px-4 py-3 text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scoreboard-body" class="divide-y divide-slate-800/60">
+                        <!-- Scoreboard rows injected here -->
+                    </tbody>
+                </table>
+            </div>
+            <button id="btn-modal-close-scores" class="mt-6 bg-slate-800 hover:bg-slate-700 text-white font-bold px-6 py-2 rounded-xl text-sm transition">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <!-- RULES MODAL -->
+    <div id="rules-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-2xl rounded-2xl p-6 shadow-2xl border border-slate-700 text-left relative max-h-[85vh] overflow-y-auto">
+            <button id="close-rules" class="absolute top-4 right-4 text-slate-400 hover:text-white text-xl">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h3 class="text-2xl font-bold text-amber-400 cinzel mb-2">How to Play Call Break</h3>
+            <div class="space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                    <h4 class="font-bold text-white text-sm mb-1 text-amber-300">♠ Trump Suit</h4>
+                    <p>Spades (♠) are always the permanent Trump suit in Call Break. A Spade beats any card of other suits.</p>
+                </div>
+                <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                    <h4 class="font-bold text-white text-sm mb-1 text-amber-300">🎯 Bidding Phase</h4>
+                    <p>At the start of each round, players bid (call) between 1 and 13 expected tricks they plan to win. Minimum bid is 1.</p>
+                </div>
+                <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                    <h4 class="font-bold text-white text-sm mb-1 text-amber-300">🃏 Playing Rules</h4>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li>You must follow the lead suit played in the trick if you have it.</li>
+                        <li>You must play a card of higher rank than the highest card played so far if possible.</li>
+                        <li>If you don't have the lead suit, you <strong>must play a Spade (trump)</strong> if available.</li>
+                        <li>If you have neither the lead suit nor a winning spade, you can throw any card.</li>
+                    </ul>
+                </div>
+                <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800">
+                    <h4 class="font-bold text-white text-sm mb-1 text-amber-300">📊 Scoring System</h4>
+                    <p>• If tricks won = Bid: Score = Bid (e.g., Bid 3, Won 3 = 3.0 points)</p>
+                    <p>• If tricks won > Bid: Score = Bid + 0.1 for each extra trick (e.g., Bid 3, Won 5 = 3.2 points)</p>
+                    <p>• If tricks won < Bid: Score = -Bid (Negative penalty, e.g., Bid 4, Won 2 = -4.0 points)</p>
+                </div>
+            </div>
+            <div class="mt-5 text-center">
+                <button id="btn-modal-close-rules" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold px-8 py-2.5 rounded-xl text-sm transition shadow-lg">
+                    Got It, Let's Play!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAME OVER / ROUND SUMMARY MODAL -->
+    <div id="gameover-modal" class="hidden fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md rounded-2xl p-6 shadow-2xl border border-amber-500/40 text-center relative">
+            <div class="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-300 text-slate-950 flex items-center justify-center text-3xl mx-auto mb-3 shadow-xl">
+                <i id="winner-icon" class="fa-solid fa-trophy"></i>
+            </div>
+            <h3 id="modal-title" class="text-2xl font-black text-white cinzel mb-1">Game Over!</h3>
+            <p id="modal-subtitle" class="text-sm text-slate-300 mb-6">Winner: <span id="winner-name" class="text-amber-400 font-bold">You</span></p>
+
+            <div id="final-ranks-list" class="space-y-2 mb-6 text-left">
+                <!-- Dynamic Ranks Injected Here -->
+            </div>
+
+            <button id="btn-restart-game" class="w-full bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black py-3 rounded-xl text-base transition shadow-xl">
+                Play New Match
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* Call Break Game Core Script */
+
+        // Suit Symbols & Color maps
+        const SUITS = {
+            'S': { symbol: '♠', name: 'Spades', color: 'black' },
+            'H': { symbol: '♥', name: 'Hearts', color: 'red' },
+            'D': { symbol: '♦', name: 'Diamonds', color: 'red' },
+            'C': { symbol: '♣', name: 'Clubs', color: 'black' }
+        };
+
+        const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
+        const RANK_VALUES = {
+            '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7,
+            '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14
+        };
+
+        // Game State Structure
+        const gameState = {
+            currentRound: 1,
+            maxRounds: 5,
+            dealerIndex: 0, // 0: P1 (Human), 1: P2, 2: P3, 3: P4
+            turnIndex: 0,
+            leadSuit: null,
+            currentTrick: [], // { playerId: number, card: Card }
+            tricksWonThisRound: [0, 0, 0, 0],
+            bids: [0, 0, 0, 0],
+            scoresHistory: [[], [], [], []], // 5 entries per player
+            totalScores: [0, 0, 0, 0],
+            hands: [[], [], [], []], // Card hands
+            phase: 'LOBBY', // 'LOBBY', 'BIDDING', 'PLAYING', 'ROUND_END', 'GAME_OVER'
+            players: [
+                { id: 0, name: 'You', isBot: false },
+                { id: 1, name: 'Alex (Bot)', isBot: true },
+                { id: 2, name: 'Maya (Bot)', isBot: true },
+                { id: 3, name: 'Sam (Bot)', isBot: true }
+            ]
+        };
+
+        // DOM Element Cache
+        const DOM = {
+            lobbyScreen: document.getElementById('lobby-screen'),
+            playerNameInput: document.getElementById('player-name-input'),
+            btnQuickPlay: document.getElementById('btn-quick-play'),
+            btnMultiplayerMode: document.getElementById('btn-multiplayer-mode'),
+            roomSelectionPanel: document.getElementById('room-selection-panel'),
+            btnCreateRoom: document.getElementById('btn-create-room'),
+            btnJoinRoom: document.getElementById('btn-join-room'),
+            roomCodeInput: document.getElementById('room-code-input'),
+            
+            btnScoreboard: document.getElementById('btn-scoreboard'),
+            btnRules: document.getElementById('btn-rules'),
+            btnLobby: document.getElementById('btn-lobby'),
+            scoreboardModal: document.getElementById('scoreboard-modal'),
+            closeScoreboard: document.getElementById('close-scoreboard'),
+            btnModalCloseScores: document.getElementById('btn-modal-close-scores'),
+            rulesModal: document.getElementById('rules-modal'),
+            closeRules: document.getElementById('close-rules'),
+            btnModalCloseRules: document.getElementById('btn-modal-close-rules'),
+            gameoverModal: document.getElementById('gameover-modal'),
+            btnRestartGame: document.getElementById('btn-restart-game'),
+
+            gameStatusMsg: document.getElementById('game-status-msg'),
+            biddingModal: document.getElementById('bidding-modal'),
+            headerRound: document.getElementById('header-round'),
+            leadSuitBadge: document.getElementById('lead-suit-badge'),
+            leadSuitIcon: document.getElementById('lead-suit-icon'),
+
+            p1CardsContainer: document.getElementById('p1-cards-container'),
+            p2CardsContainer: document.getElementById('p2-cards-container'),
+            p3CardsContainer: document.getElementById('p3-cards-container'),
+            p4CardsContainer: document.getElementById('p4-cards-container'),
+
+            slots: [
+                document.getElementById('slot-p1'),
+                document.getElementById('slot-p2'),
+                document.getElementById('slot-p3'),
+                document.getElementById('slot-p4')
+            ]
+        };
+
+        // Deck Helpers
+        function createDeck() {
+            const deck = [];
+            for (let suit in SUITS) {
+                for (let rank of RANKS) {
+                    deck.push({ suit, rank, value: RANK_VALUES[rank] });
+                }
+            }
+            return deck;
+        }
+
+        function shuffleDeck(deck) {
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+            return deck;
+        }
+
+        // Sort player's hand by suit then by value (descending)
+        function sortHand(hand) {
+            const suitOrder = { 'S': 4, 'H': 3, 'D': 2, 'C': 1 };
+            return hand.sort((a, b) => {
+                if (suitOrder[a.suit] !== suitOrder[b.suit]) {
+                    return suitOrder[b.suit] - suitOrder[a.suit];
+                }
+                return b.value - a.value;
+            });
+        }
+
+        function initEventListeners() {
+            // Lobby controls
+            DOM.btnQuickPlay.addEventListener('click', () => {
+                const name = DOM.playerNameInput.value.trim() || 'You';
+                gameState.players[0].name = name;
+                document.getElementById('p1-name').textContent = name;
+                DOM.lobbyScreen.classList.add('hidden');
+                startNewMatch();
+            });
+
+            DOM.btnMultiplayerMode.addEventListener('click', () => {
+                DOM.roomSelectionPanel.classList.toggle('hidden');
+            });
+
+            DOM.btnCreateRoom.addEventListener('click', () => {
+                const code = 'CB-' + Math.floor(1000 + Math.random() * 9000);
+                alert(`Multiplayer Room Created!\nRoom Code: ${code}\nShare this code with 3 friends.`);
+                const name = DOM.playerNameInput.value.trim() || 'You';
+                gameState.players[0].name = name;
+                document.getElementById('p1-name').textContent = name;
+                DOM.lobbyScreen.classList.add('hidden');
+                startNewMatch();
+            });
+
+            DOM.btnJoinRoom.addEventListener('click', () => {
+                const code = DOM.roomCodeInput.value.trim();
+                if (!code) {
+                    alert('Please enter a valid room code');
+                    return;
+                }
+                alert(`Connected to Table ${code}! Game starting...`);
+                const name = DOM.playerNameInput.value.trim() || 'You';
+                gameState.players[0].name = name;
+                document.getElementById('p1-name').textContent = name;
+                DOM.lobbyScreen.classList.add('hidden');
+                startNewMatch();
+            });
+
+            DOM.btnLobby.addEventListener('click', () => {
+                DOM.lobbyScreen.classList.remove('hidden');
+            });
+
+            // Scoreboard Modal toggle
+            DOM.btnScoreboard.addEventListener('click', updateAndShowScoreboard);
+            DOM.closeScoreboard.addEventListener('click', () => DOM.scoreboardModal.classList.add('hidden'));
+            DOM.btnModalCloseScores.addEventListener('click', () => DOM.scoreboardModal.classList.add('hidden'));
+
+            // Rules Modal toggle
+            DOM.btnRules.addEventListener('click', () => DOM.rulesModal.classList.remove('hidden'));
+            DOM.closeRules.addEventListener('click', () => DOM.rulesModal.classList.add('hidden'));
+            DOM.btnModalCloseRules.addEventListener('click', () => DOM.rulesModal.classList.add('hidden'));
+
+            // Game over restart button
+            DOM.btnRestartGame.addEventListener('click', () => {
+                DOM.gameoverModal.classList.add('hidden');
+                startNewMatch();
+            });
+
+            // Bidding Buttons Event Delegation
+            document.querySelectorAll('.btn-bid').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const bid = parseInt(e.target.dataset.bid);
+                    handleHumanBid(bid);
+                });
+            });
+        }
+
+        function startNewMatch() {
+            gameState.currentRound = 1;
+            gameState.dealerIndex = Math.floor(Math.random() * 4);
+            gameState.scoresHistory = [[], [], [], []];
+            gameState.totalScores = [0, 0, 0, 0];
+            
+            updatePlayerNamesUI();
+            startRound();
+        }
+
+        function updatePlayerNamesUI() {
+            for (let i = 0; i < 4; i++) {
+                const pNum = i + 1;
+                document.getElementById(`p${pNum}-name`).textContent = gameState.players[i].name;
+            }
+        }
+
+        function startRound() {
+            gameState.phase = 'BIDDING';
+            gameState.tricksWonThisRound = [0, 0, 0, 0];
+            gameState.bids = [0, 0, 0, 0];
+            gameState.currentTrick = [];
+            gameState.leadSuit = null;
+
+            DOM.headerRound.textContent = `${gameState.currentRound}/${gameState.maxRounds}`;
+            DOM.leadSuitBadge.classList.add('hidden');
+
+            // Clear trick slots
+            DOM.slots.forEach(slot => slot.innerHTML = '');
+
+            // Deal cards
+            const deck = shuffleDeck(createDeck());
+            gameState.hands = [
+                sortHand(deck.slice(0, 13)),
+                sortHand(deck.slice(13, 26)),
+                sortHand(deck.slice(26, 39)),
+                sortHand(deck.slice(39, 52))
+            ];
+
+            // Highlight Dealer Indicator
+            for (let i = 0; i < 4; i++) {
+                const dealerEl = document.getElementById(`p${i+1}-dealer`);
+                if (i === gameState.dealerIndex) {
+                    dealerEl.classList.remove('hidden');
+                } else {
+                    dealerEl.classList.add('hidden');
+                }
+                document.getElementById(`p${i+1}-bid`).textContent = '-';
+                document.getElementById(`p${i+1}-won`).textContent = '0';
+            }
+
+            renderAllHands();
+            
+            // First bidder is player to the left of dealer
+            gameState.turnIndex = (gameState.dealerIndex + 1) % 4;
+            updateStatusMsg(`${gameState.players[gameState.turnIndex].name}'s turn to Bid!`);
+
+            // Start Bidding sequence
+            processBiddingPhase();
+        }
+
+        function processBiddingPhase() {
+            highlightActivePlayer(gameState.turnIndex);
+
+            if (gameState.players[gameState.turnIndex].isBot) {
+                // Bot calculates optimal bid based on high cards and spades count
+                setTimeout(() => {
+                    const botBid = calculateBotBid(gameState.hands[gameState.turnIndex]);
+                    setPlayerBid(gameState.turnIndex, botBid);
+                    advanceBiddingTurn();
+                }, 800);
+            } else {
+                // Show Bidding Modal for Human
+                DOM.biddingModal.classList.remove('hidden');
+            }
+        }
+
+        function handleHumanBid(bid) {
+            DOM.biddingModal.classList.add('hidden');
+            setPlayerBid(0, bid);
+            advanceBiddingTurn();
+        }
+
+        function setPlayerBid(playerId, bid) {
+            gameState.bids[playerId] = bid;
+            document.getElementById(`p${playerId+1}-bid`).textContent = bid;
+        }
+
+        function advanceBiddingTurn() {
+            // Check if all players have bid
+            const allBid = gameState.bids.every(b => b > 0);
+            if (allBid) {
+                // Bidding finished, start playing tricks!
+                gameState.phase = 'PLAYING';
+                // First to lead card is the player after dealer
+                gameState.turnIndex = (gameState.dealerIndex + 1) % 4;
+                updateStatusMsg(`${gameState.players[gameState.turnIndex].name} leads the first trick!`);
+                highlightActivePlayer(gameState.turnIndex);
+                
+                if (gameState.players[gameState.turnIndex].isBot) {
+                    setTimeout(playBotCard, 1000);
+                } else {
+                    renderHumanHand();
+                }
+            } else {
+                gameState.turnIndex = (gameState.turnIndex + 1) % 4;
+                updateStatusMsg(`${gameState.players[gameState.turnIndex].name}'s turn to Bid...`);
+                processBiddingPhase();
+            }
+        }
+
+        // Smart Bot Bidding heuristic algorithm
+        function calculateBotBid(hand) {
+            let estimatedTricks = 0;
+            const suitCounts = { 'S': 0, 'H': 0, 'D': 0, 'C': 0 };
+
+            hand.forEach(c => {
+                suitCounts[c.suit]++;
+                // Aces are almost guaranteed tricks
+                if (c.rank === 'A') estimatedTricks += 1.0;
+                // Kings are strong if accompanied by other cards
+                else if (c.rank === 'K') estimatedTricks += 0.7;
+                // Queens in long suits or Spades
+                else if (c.rank === 'Q' && c.suit === 'S') estimatedTricks += 0.5;
+            });
+
+            // Extra tricks for high spade suit count
+            if (suitCounts['S'] >= 4) estimatedTricks += (suitCounts['S'] - 3) * 0.8;
+
+            let finalBid = Math.round(estimatedTricks);
+            // Call break minimum bid constraint
+            return Math.max(1, Math.min(8, finalBid));
+        }
+
+        function renderAllHands() {
+            renderHumanHand();
+
+            // Render Card Back placeholders for AI Players
+            [1, 2, 3].forEach(idx => {
+                const container = DOM[`p${idx+1}CardsContainer`];
+                if (!container) return;
+                container.innerHTML = '';
+                const cardCount = gameState.hands[idx].length;
+                for (let i = 0; i < cardCount; i++) {
+                    const cardBack = document.createElement('div');
+                    cardBack.className = 'card card-back w-8 h-12 rounded border shadow scale-90';
+                    container.appendChild(cardBack);
+                }
+            });
+        }
+
+        function renderHumanHand() {
+            const container = DOM.p1CardsContainer;
+            container.innerHTML = '';
+
+            const humanHand = gameState.hands[0];
+            const playableCards = getValidPlayableCards(0);
+
+            humanHand.forEach((card, index) => {
+                const cardEl = document.createElement('div');
+                const isPlayable = gameState.phase === 'PLAYING' && 
+                                   gameState.turnIndex === 0 && 
+                                   playableCards.some(c => c.suit === card.suit && c.rank === card.rank);
+
+                cardEl.className = `card ${SUITS[card.suit].color} anim-deal ${!isPlayable && gameState.turnIndex === 0 && gameState.phase === 'PLAYING' ? 'disabled' : ''}`;
+                
+                cardEl.innerHTML = `
+                    <div class="flex justify-between items-center text-xs sm:text-sm font-bold leading-none">
+                        <span>${card.rank}</span>
+                        <span>${SUITS[card.suit].symbol}</span>
+                    </div>
+                    <div class="text-xl sm:text-2xl text-center my-auto font-black leading-none">${SUITS[card.suit].symbol}</div>
+                    <div class="flex justify-between items-center text-xs sm:text-sm font-bold leading-none rotate-180">
+                        <span>${card.rank}</span>
+                        <span>${SUITS[card.suit].symbol}</span>
+                    </div>
+                `;
+
+                if (isPlayable) {
+                    cardEl.addEventListener('click', () => handleHumanCardClick(card, index));
+                }
+
+                container.appendChild(cardEl);
+            });
+        }
+
+        function getValidPlayableCards(playerId) {
+            const hand = gameState.hands[playerId];
+            if (gameState.currentTrick.length === 0) {
+                // Leading player can play any card from hand
+                return hand;
+            }
+
+            const leadCard = gameState.currentTrick[0].card;
+            const leadSuit = leadCard.suit;
+
+            // Find highest winning card played so far in trick
+            let currentWinningCard = leadCard;
+            let currentWinnerIsTrump = (leadSuit === 'S');
+
+            gameState.currentTrick.forEach(play => {
+                const c = play.card;
+                if (c.suit === 'S') {
+                    if (!currentWinnerIsTrump || c.value > currentWinningCard.value) {
+                        currentWinningCard = c;
+                        currentWinnerIsTrump = true;
+                    }
+                } else if (!currentWinnerIsTrump && c.suit === leadSuit && c.value > currentWinningCard.value) {
+                    currentWinningCard = c;
+                }
+            });
+
+            // Rule 1: Must follow lead suit if possible
+            const cardsInLeadSuit = hand.filter(c => c.suit === leadSuit);
+            if (cardsInLeadSuit.length > 0) {
+                // Must play a higher card than highest lead suit card played if possible
+                const higherInLead = cardsInLeadSuit.filter(c => !currentWinnerIsTrump && c.value > currentWinningCard.value);
+                if (higherInLead.length > 0) {
+                    return higherInLead;
+                }
+                return cardsInLeadSuit;
+            }
+
+            // Rule 2: If out of lead suit, MUST play a Spade (trump) if possible
+            const spadesInHand = hand.filter(c => c.suit === 'S');
+            if (spadesInHand.length > 0) {
+                // If winning card is already a Spade, must beat it with a higher Spade if possible
+                if (currentWinnerIsTrump) {
+                    const higherSpades = spadesInHand.filter(c => c.value > currentWinningCard.value);
+                    if (higherSpades.length > 0) {
+                        return higherSpades;
+                    }
+                }
+                return spadesInHand;
+            }
+
+            // Rule 3: If neither lead suit nor Spade is available, can play any card
+            return hand;
+        }
+
+        function handleHumanCardClick(card, cardIndex) {
+            if (gameState.phase !== 'PLAYING' || gameState.turnIndex !== 0) return;
+
+            // Remove card from hand
+            gameState.hands[0].splice(cardIndex, 1);
+            executeCardPlay(0, card);
+        }
+
+        function playBotCard() {
+            if (gameState.phase !== 'PLAYING') return;
+
+            const botId = gameState.turnIndex;
+            const validCards = getValidPlayableCards(botId);
+            const hand = gameState.hands[botId];
+
+            // AI Card selection strategy
+            let chosenCard = validCards[0];
+
+            if (gameState.currentTrick.length === 0) {
+                // Leading: play high non-spade card or highest card
+                const nonSpades = validCards.filter(c => c.suit !== 'S');
+                if (nonSpades.length > 0) {
+                    chosenCard = nonSpades.reduce((prev, curr) => curr.value > prev.value ? curr : prev);
+                } else {
+                    chosenCard = validCards.reduce((prev, curr) => curr.value < prev.value ? curr : prev);
+                }
+            } else {
+                // Try to win trick cheaply or discard lowest card
+                chosenCard = validCards.reduce((prev, curr) => curr.value < prev.value ? curr : prev);
+            }
+
+            // Remove chosen card from bot hand
+            const idxInHand = hand.findIndex(c => c.suit === chosenCard.suit && c.rank === chosenCard.rank);
+            if (idxInHand !== -1) hand.splice(idxInHand, 1);
+
+            executeCardPlay(botId, chosenCard);
+        }
+
+        function executeCardPlay(playerId, card) {
+            // Set lead suit if first card of trick
+            if (gameState.currentTrick.length === 0) {
+                gameState.leadSuit = card.suit;
+                DOM.leadSuitBadge.classList.remove('hidden');
+                DOM.leadSuitIcon.textContent = SUITS[card.suit].symbol;
+                DOM.leadSuitIcon.className = SUITS[card.suit].color === 'red' ? 'text-red-500 font-bold' : 'text-slate-200 font-bold';
+            }
+
+            gameState.currentTrick.push({ playerId, card });
+
+            // Display Played Card in corresponding slot
+            renderPlayedCardInSlot(playerId, card);
+            renderAllHands();
+
+            // Advance play turn or evaluate trick
+            if (gameState.currentTrick.length < 4) {
+                gameState.turnIndex = (gameState.turnIndex + 1) % 4;
+                highlightActivePlayer(gameState.turnIndex);
+                updateStatusMsg(`${gameState.players[gameState.turnIndex].name}'s turn...`);
+
+                if (gameState.players[gameState.turnIndex].isBot) {
+                    setTimeout(playBotCard, 700);
+                } else {
+                    renderHumanHand();
+                }
+            } else {
+                // All 4 players played -> Evaluate Trick Winner
+                setTimeout(evaluateTrickWinner, 1000);
+            }
+        }
+
+        function renderPlayedCardInSlot(playerId, card) {
+            const slot = DOM.slots[playerId];
+            slot.innerHTML = `
+                <div class="card ${SUITS[card.suit].color} anim-play shadow-2xl scale-95 sm:scale-105">
+                    <div class="flex justify-between items-center text-xs font-bold leading-none">
+                        <span>${card.rank}</span>
+                        <span>${SUITS[card.suit].symbol}</span>
+                    </div>
+                    <div class="text-xl text-center my-auto font-black leading-none">${SUITS[card.suit].symbol}</div>
+                    <div class="flex justify-between items-center text-xs font-bold leading-none rotate-180">
+                        <span>${card.rank}</span>
+                        <span>${SUITS[card.suit].symbol}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        function evaluateTrickWinner() {
+            const trick = gameState.currentTrick;
+            const leadSuit = gameState.leadSuit;
+
+            let winnerPlay = trick[0];
+            let winnerIsTrump = (winnerPlay.card.suit === 'S');
+
+            for (let i = 1; i < trick.length; i++) {
+                const play = trick[i];
+                const card = play.card;
+
+                if (card.suit === 'S') {
+                    if (!winnerIsTrump || card.value > winnerPlay.card.value) {
+                        winnerPlay = play;
+                        winnerIsTrump = true;
+                    }
+                } else if (!winnerIsTrump && card.suit === leadSuit && card.value > winnerPlay.card.value) {
+                    winnerPlay = play;
+                }
+            }
+
+            const winnerId = winnerPlay.playerId;
+            gameState.tricksWonThisRound[winnerId]++;
+            document.getElementById(`p${winnerId+1}-won`).textContent = gameState.tricksWonThisRound[winnerId];
+
+            updateStatusMsg(`🎉 ${gameState.players[winnerId].name} won the trick!`);
+
+            // Highlight Winning card slot briefly
+            DOM.slots[winnerId].firstElementChild?.classList.add('ring-4', 'ring-amber-400');
+
+            setTimeout(() => {
+                // Clear center table slots
+                DOM.slots.forEach(slot => slot.innerHTML = '');
+                gameState.currentTrick = [];
+                gameState.leadSuit = null;
+                DOM.leadSuitBadge.classList.add('hidden');
+
+                // Check if 13 tricks in round finished
+                if (gameState.hands[0].length === 0) {
+                    finishRound();
+                } else {
+                    // Winner leads next trick
+                    gameState.turnIndex = winnerId;
+                    highlightActivePlayer(gameState.turnIndex);
+                    updateStatusMsg(`${gameState.players[winnerId].name} leads next!`);
+
+                    if (gameState.players[winnerId].isBot) {
+                        setTimeout(playBotCard, 600);
+                    } else {
+                        renderHumanHand();
+                    }
+                }
+            }, 1200);
+        }
+
+        function finishRound() {
+            gameState.phase = 'ROUND_END';
+
+            // Calculate Round Scores according to standard Call Break scoring rules
+            for (let i = 0; i < 4; i++) {
+                const bid = gameState.bids[i];
+                const won = gameState.tricksWonThisRound[i];
+                let roundScore = 0;
+
+                if (won >= bid) {
+                    // Exact bid + 0.1 per extra trick
+                    roundScore = bid + ((won - bid) * 0.1);
+                } else {
+                    // Penalty equal to negative bid
+                    roundScore = -bid;
+                }
+
+                // Round score to 1 decimal precision
+                roundScore = Math.round(roundScore * 10) / 10;
+                gameState.scoresHistory[i].push(roundScore);
+                gameState.totalScores[i] = Math.round((gameState.totalScores[i] + roundScore) * 10) / 10;
+            }
+
+            document.getElementById('p1-score').textContent = gameState.totalScores[0].toFixed(1);
+
+            updateAndShowScoreboard();
+
+            // Next round setup or end match
+            if (gameState.currentRound < gameState.maxRounds) {
+                gameState.currentRound++;
+                gameState.dealerIndex = (gameState.dealerIndex + 1) % 4;
+                setTimeout(() => {
+                    alert(`Round ${gameState.currentRound - 1} Complete! Starting Round ${gameState.currentRound}...`);
+                    DOM.scoreboardModal.classList.add('hidden');
+                    startRound();
+                }, 2500);
+            } else {
+                // Match Over!
+                setTimeout(showFinalGameResults, 2000);
+            }
+        }
+
+        function updateAndShowScoreboard() {
+            const tbody = document.getElementById('scoreboard-body');
+            tbody.innerHTML = '';
+
+            for (let i = 0; i < 4; i++) {
+                const tr = document.createElement('tr');
+                tr.className = i === 0 ? 'bg-amber-500/10 font-bold text-white' : 'hover:bg-slate-800/40';
+
+                let rCols = '';
+                for (let r = 0; r < 5; r++) {
+                    const sc = gameState.scoresHistory[i][r];
+                    const formatted = sc !== undefined ? (sc >= 0 ? `+${sc.toFixed(1)}` : `${sc.toFixed(1)}`) : '-';
+                    const textColor = sc !== undefined ? (sc >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-slate-500';
+                    rCols += `<td class="px-3 py-3 text-center ${textColor}">${formatted}</td>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="px-4 py-3 flex items-center space-x-2">
+                        <i class="fa-solid ${i === 0 ? 'fa-user text-amber-400' : 'fa-robot text-slate-400'}"></i>
+                        <span>${gameState.players[i].name}</span>
+                    </td>
+                    ${rCols}
+                    <td class="px-4 py-3 text-right font-black text-amber-400">${gameState.totalScores[i].toFixed(1)}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+
+            DOM.scoreboardModal.classList.remove('hidden');
+        }
+
+        function showFinalGameResults() {
+            DOM.scoreboardModal.classList.add('hidden');
+            
+            // Rank players by total score
+            const ranked = gameState.players.map((p, idx) => ({
+                name: p.name,
+                score: gameState.totalScores[idx],
+                isHuman: idx === 0
+            })).sort((a, b) => b.score - a.score);
+
+            const winner = ranked[0];
+            document.getElementById('winner-name').textContent = winner.name;
+            
+            if (winner.isHuman) {
+                document.getElementById('modal-title').textContent = "Victory!";
+                document.getElementById('modal-subtitle').textContent = "Congratulations! You won the Call Break Match!";
+                document.getElementById('winner-icon').className = "fa-solid fa-crown text-slate-950";
+            } else {
+                document.getElementById('modal-title').textContent = "Match Ended";
+                document.getElementById('modal-subtitle').textContent = `${winner.name} won the match! Better luck next time.`;
+                document.getElementById('winner-icon').className = "fa-solid fa-trophy text-slate-950";
+            }
+
+            const ranksContainer = document.getElementById('final-ranks-list');
+            ranksContainer.innerHTML = '';
+
+            ranked.forEach((p, idx) => {
+                const rankBox = document.createElement('div');
+                rankBox.className = `flex justify-between items-center p-3 rounded-xl border ${idx === 0 ? 'bg-amber-500/20 border-amber-500/50 text-amber-300 font-bold' : 'bg-slate-900/80 border-slate-800 text-slate-300'}`;
+                rankBox.innerHTML = `
+                    <div class="flex items-center space-x-3">
+                        <span class="w-6 h-6 rounded-full ${idx === 0 ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-400'} flex items-center justify-center text-xs font-bold">
+                            #${idx + 1}
+                        </span>
+                        <span>${p.name}</span>
+                    </div>
+                    <span class="font-black text-sm">${p.score.toFixed(1)} pts</span>
+                `;
+                ranksContainer.appendChild(rankBox);
+            });
+
+            DOM.gameoverModal.classList.remove('hidden');
+        }
+
+        // Helper UI functions
+        function highlightActivePlayer(playerIdx) {
+            for (let i = 0; i < 4; i++) {
+                const box = document.getElementById(`p${i+1}-box`);
+                if (i === playerIdx) {
+                    box.classList.add('active-player-glow');
+                } else {
+                    box.classList.remove('active-player-glow');
+                }
+            }
+        }
+
+        function updateStatusMsg(msg) {
+            DOM.gameStatusMsg.textContent = msg;
+        }
+
+        // Initialize Call Break on window load
+        window.onload = function() {
+            initEventListeners();
+        };
+    </script>
+</body>
+</html>
